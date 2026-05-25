@@ -27,12 +27,40 @@ static sem_t Most; // pilnuje by na moscie bylo max 1 auto
 static sem_t KolejkaA; //kolejka samochodw co chca jechac z A do B
 static sem_t KolejkaB; //kolejka samochodw co chca jechac z B do A
 
+// Funkcja wyświetla aktualny stan symulacji. Zakładamy e mutex jest jua zablokowany!!!
+/* Format: A-x y>>> [>>(<<) id >>(<<)] <<<z w-B
+  gdzie:
+   MiastoA - liczba aut po stronie A
+   KolejkaA - liczba aut czekających po stronie A
+   NaMościeAuto - numer samochodu przejeżdżającego
+   KolejkaB - liczba aut oczekujących po stronie B
+   MiastoB - liczba aut po stronie B
+*/
+
+void print_state(void)
+{
+    if(NaMościeAuto != -1) {
+        if(RuchMostu == zAdoB) {
+            printf("A-%d %d>>> [>> %d >>] <<<%d %d-B\n", MiastoA, KolejkaA, NaMościeAuto, KolejkaB, MiastoB);
+        } else {
+            printf("A-%d %d>>> [<< %d <<] <<<%d %d-B\n", MiastoA, KolejkaA, NaMościeAuto, KolejkaB, MiastoB);
+        }
+    }
+    else {
+        printf("A-%d %d>>> [ --- ] <<<%d %d-B\n", MiastoA, KolejkaA, KolejkaB, MiastoB);
+    }
+    fflush(stdout);
+}
+
+
 typedef struct { // argumenty watku auta
     int id;
 } car_arg_t;
 
 static void* car_thread(void *arg) // warek auta
 { 
+    car_arg_t *c = (car_arg_t*)arg;
+    int id = c->id;
 
 }
 
