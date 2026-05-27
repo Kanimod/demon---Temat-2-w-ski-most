@@ -41,13 +41,13 @@ void print_state(void)
 {
     if(NaMościeAuto != -1) {
         if(RuchMostu == zAdoB) {
-            printf("A-%d %d>>> [>> %d >>] <<<%d %d-B\n", MiastoA, KolejkaA, NaMościeAuto, KolejkaB, MiastoB);
+            printf("A-%d %d >>> [>> %d >>] <<< %d %d-B\n", MiastoA, KolejkaA, NaMościeAuto, KolejkaB, MiastoB);
         } else {
-            printf("A-%d %d>>> [<< %d <<] <<<%d %d-B\n", MiastoA, KolejkaA, NaMościeAuto, KolejkaB, MiastoB);
+            printf("A-%d %d >>> [<< %d <<] <<< %d %d-B\n", MiastoA, KolejkaA, NaMościeAuto, KolejkaB, MiastoB);
         }
     }
     else {
-        printf("A-%d %d>>> [ --- ] <<<%d %d-B\n", MiastoA, KolejkaA, KolejkaB, MiastoB);
+        printf("A-%d %d >>> [ --- ] <<< %d %d-B\n", MiastoA, KolejkaA, KolejkaB, MiastoB);
     }
     fflush(stdout);
 }
@@ -57,12 +57,51 @@ typedef struct { // argumenty watku auta
     int id;
 } car_arg_t;
 
-static void* car_thread(void *arg) // warek auta
+static void* car_thread_init(void *arg) // warek auta
 { 
     car_arg_t *c = (car_arg_t*)arg;
     int id = c->id;
 
+    // losujemy kierunek jazdy auta
+    dir_t kierunek = (rand() % 2) ? zAdoB : zBdoA;
+
+    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
+    if (kierunek == zAdoB) {
+        if((rand() % 2)){
+            KolejkaA++;
+            sem_wait(&KolejkaA); // auto czeka w kolejce A
+        } else {
+            MiastoA++;
+        }
+    } else {
+        if((rand() % 2)){
+            KolejkaB++;
+            sem_wait(&KolejkaB); // auto czeka w kolejce B
+        } else {
+            MiastoB++;
+        }
+    }
+    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+
+    car_thread_driving(kierunek); // auto zaczyna jazde
+    
+    return NULL; // zwracamy kierunek jazdy auta
 }
+
+static void* car_thread_driving (dir_t kierunek) // watek auta podczas jazdy
+{
+    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
+    if (kierunek == zAdoB) {
+        MiastoA--;
+    } else {
+        MiastoB--;
+    }
+    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+
+     return NULL; // watek auta konczy dzialanie po przejechaniu
+
+}
+
 
 int main(int argc, char const *argv[])
 {
@@ -90,6 +129,7 @@ int main(int argc, char const *argv[])
 
     pthread_t *t = calloc((size_t)N, sizeof(pthread_t)); // tablica watkow aut
     car_arg_t *args = calloc((size_t)N, sizeof(car_arg_t)); //tablica argumentow dla watkow aut
+
 
     for (int i = 0; i < N; i++) { // tworzenie watkow aut i przypisywanie im id
         args[i].id = i + 1;
