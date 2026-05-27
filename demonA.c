@@ -7,12 +7,8 @@
 #include <time.h>
 
 static int N; // liczba aut (watkow)
+static int AutonaMoście = 0;
 typedef enum { pusty = 0, zAdoB = 1, zBdoA = 2 } dir_t; // typ kierunku na moscie dla static dir_t RuchMostu = DIR_NONE;
-static volatile sig_atomic_t stop_flag = 0; // flaga do zatrzymania programu po otrzymaniu SIGINT
-
-static void on_sigint(int signo) { // handler dla SIGINT
-    stop_flag = 1;
-}
 
 static int MiastoA = 0, MiastoB = 0;
 static int KolejkaA  = 0, KolejkaB  =  0;
@@ -43,152 +39,169 @@ void print_state(void)
     else {
         printf("A-%d %d >>> [ --- ] <<< %d %d-B\n", MiastoA, KolejkaA, KolejkaB, MiastoB);
     }
+    int on_bridge = (NaMościeAuto != -1) ? 1 : 0;
+int suma = MiastoA + MiastoB + KolejkaA + KolejkaB + on_bridge;
+if (suma != N) {
+    fprintf(stderr, "BLAD: suma=%d, N=%d\n", suma, N);
+}
     fflush(stdout);
 }
-
-typedef enum { IN_A, IN_B, WAIT_A, WAIT_B } car_state_t;
+typedef enum { stateKolejkaA = 0, stateKolejkaB = 1, stateMiastoA = 2, stateMiastoB = 3 } state_t;
 typedef struct { // argumenty watku auta
     int id;
-    car_state_t state;
+    state_t state;
 } car_arg_t;
 
-
-static void bridge_steering(){
+static void bridgesteering(){
     pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie sprawdzic stan symulacji
-    if(NaMościeAuto == -1) { // sprawdzamy czy most jest wolny
+    if(NaMościeAuto == -1 && RuchMostu == pusty) { // sprawdzamy czy most jest wolny
             if(KolejkaA > 0 && KolejkaB == 0) {
                 RuchMostu = zAdoB;
                 sem_post(&semA); // odblokowujemy auto z kolejki A
-            } else if(KolejkaB > 0 && KolejkaA == 0) {
+            }
+            else if(KolejkaB > 0 && KolejkaA == 0) {
                 RuchMostu = zBdoA;
                 sem_post(&semB); // odblokowujemy auto z kolejki B
-            } else if(KolejkaA > 0 && KolejkaB > 0) {
-                RuchMostu = ZmiennikKierunku;
+            }
+            else if(KolejkaA > 0 && KolejkaB > 0) { // jesli sa auta w obu kolejkach to przepuszczamy auto z kolejki ktora ma wiecej aut
                 if(ZmiennikKierunku == zAdoB) {
+                    RuchMostu = zAdoB;
                     sem_post(&semA); // odblokowujemy auto z kolejki A
                 } else {
+                    RuchMostu = zBdoA;
                     sem_post(&semB); // odblokowujemy auto z kolejki B
                 }
-                ZmiennikKierunku = (ZmiennikKierunku == zAdoB) ? zBdoA : zAdoB; // zmieniamy kierunek dla nastepnego razu
             }
     }
     pthread_mutex_unlock(&mtx); // odblokowujemy mutex
     return;
 }
 
-static void* car_thread_driving (void *arg) // watek auta podczas jazdy
+static void* inQueueA (void *arg) // watek auta podczas jazdy
 {
     car_arg_t *c = (car_arg_t*)arg;
     int id = c->id;
-    car_state_t state = c->state; 
 
-    while (!stop_flag) { // sprawdzamy czy sigint nie zostal otrzymany
-        if(state == WAIT_A) {
-            sem_wait(&semA); // czeka na pozwolenie z kolejki A
-            if (stop_flag) break;
-            sem_wait(&Most_sem); // czeka na pozwolenie z mostu
-            if (stop_flag) { sem_post(&Most_sem); break; }
+    sem_wait(&semA); // czeka na pozwolenie z kolejki A
+    sem_wait(&Most_sem); // czeka na pozwolenie z mostu
+    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
+        KolejkaA--;
+        NaMościeAuto = id;
+        RuchMostu = zAdoB;
+        print_state();
+    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
 
-            pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
-            KolejkaA--;
-            NaMościeAuto = id;
-            RuchMostu = zAdoB;
-            print_state();
-            pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+    usleep(rnd_us(100*1000, 300*1000)); // auto jest na moscie przez losowy czas od 100ms do 300ms
 
-            usleep(rnd_us(100*1000, 300*1000)); // auto jest na moscie przez losowy czas od 100ms do 300ms
+    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
+        NaMościeAuto = -1;
+        RuchMostu = pusty; // most jest teraz wolny
+        MiastoB++;
+        print_state();
+        ZmiennikKierunku = zBdoA; // zmieniamy kierunek dla kolejnego auta jesli sa auta w obu kolejkach
+    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+    sem_post(&Most_sem); // odblokowujemy most
+    bridgesteering();
+    c->state = stateMiastoB; // auto jest teraz w miescie B
+    return 0;
+}
 
-            pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
-            NaMościeAuto = -1;
-            RuchMostu = pusty; // most jest teraz wolny
-            MiastoB++;
-            state = IN_B; // auto jest teraz w miescie B
-            print_state();
-            pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+static void* inQueueB (void *arg) // watek auta podczas jazdy
+{
+    car_arg_t *c = (car_arg_t*)arg;
+    int id = c->id;
 
-            sem_post(&Most_sem); // odblokowujemy most
-            bridge_steering(); // sprawdzamy czy mozemy wpuścic auto z kolejki A
+    sem_wait(&semB); // czeka na pozwolenie z kolejki B
+    sem_wait(&Most_sem); // czeka na pozwolenie z mostu
+    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
+        KolejkaB--;
+        NaMościeAuto = id;
+        RuchMostu = zBdoA;
+    print_state();
+    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
 
-        } else if(state == WAIT_B) {
-            sem_wait(&semB); // czeka na pozwolenie z kolejki B
-            if (stop_flag) break;
-            sem_wait(&Most_sem); // czeka na pozwolenie z mostu
-            if (stop_flag) { sem_post(&Most_sem); break; }
+    usleep(rnd_us(100*1000, 300*1000)); // auto jest na moscie przez losowy czas od 100ms do 300ms
 
-            pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
-            KolejkaB--;
-            NaMościeAuto = id;
-            RuchMostu = zBdoA;
-            print_state();
-            pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
+        NaMościeAuto = -1;
+        RuchMostu = pusty; // most jest teraz wolny
+        MiastoA++;
+        print_state();
+        ZmiennikKierunku = zAdoB; // zmieniamy kierunek dla kolejnego auta jesli sa auta w obu kolejkach
+    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+    sem_post(&Most_sem); // odblokowujemy most
+    bridgesteering();
+    c->state = stateMiastoA; // auto jest teraz w miescie A
+    return 0;
+}
 
-            usleep(rnd_us(100*1000, 300*1000)); // auto jest na moscie przez losowy czas od 100ms do 300ms
+static void* inCityA(void *arg) // watek auta podczas jazdy
+{
+    car_arg_t *c = (car_arg_t*)arg;
 
-            pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
-            NaMościeAuto = -1;
-            RuchMostu = pusty; // most jest teraz wolny
+    usleep(rnd_us(50*1000, 200*1000)); // auto jest w miescie A przez losowy czas od 50ms do 200ms
+    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
+        MiastoA--;
+        KolejkaA++;
+        print_state();
+    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+    c->state = stateKolejkaA; // auto chce teraz jechac z A do B
+    return 0;
+}
+
+static void* inCityB(void *arg) // watek auta podczas jazdy
+{
+    car_arg_t *c = (car_arg_t*)arg;
+
+    usleep(rnd_us(50*1000, 200*1000)); // auto jest w miescie B przez losowy czas od 50ms do 200ms
+    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
+        MiastoB--;
+        KolejkaB++;
+        print_state();
+    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+    c->state = stateKolejkaB; // auto chce teraz jechac z B do A
+    return 0;
+}
+
+static void* car_thread_init(void *arg){
+    car_arg_t *c= (car_arg_t*)arg;
+
+    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
+
+        if(rand() % 2) {
             MiastoA++;
-            state = IN_A; // auto jest teraz w miescie A
-            print_state();
-            pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+            c->state = stateMiastoA;
+        } else {
+            MiastoB++;
+            c->state = stateMiastoB;
+        }   
 
-            sem_post(&Most_sem); // odblokowujemy most
-            bridge_steering(); // sprawdzamy czy mozemy wpuścic auto z kolejki A
-        }
-        else if(state == IN_A) {
-            usleep(rnd_us(50*1000, 200*1000)); // auto jest w miescie A przez losowy czas od 50ms do 200ms
-            pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
-            MiastoA--;
-            KolejkaA++;
-            state = WAIT_A; // auto chce teraz jechac z A do B
-            print_state();
-            pthread_mutex_unlock(&mtx); // odblokowujemy mutex
-            bridge_steering(); // sprawdzamy czy mozemy wpuścic auto z kolejki A
-        } else if(state == IN_B) {
-            usleep(rnd_us(50*1000, 200*1000)); // auto jest w miescie B przez losowy czas od 50ms do 200ms
-            pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
-            MiastoB--;
-            KolejkaB++;
-            state = WAIT_B; // auto chce teraz jechac z B do A
-            print_state();
-            pthread_mutex_unlock(&mtx); // odblokowujemy mutex
-            bridge_steering(); // sprawdzamy czy mozemy wpuścic auto z kolejki B
+        print_state();
+    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+    bridgesteering();
+
+    while (1){
+        switch (c->state)
+        {
+        case stateKolejkaA:
+            inQueueA(arg);
+            break;
+        case stateKolejkaB:
+            inQueueB(arg);
+            break;
+        case stateMiastoA:
+            inCityA(arg);
+            break;
+        case stateMiastoB:
+            inCityB(arg);
+            break;
+        
+        default:
+            break;
         }
     }
     return NULL;
 }
-
-static void* car_thread_init(void *arg) // warek auta
-{ 
-    car_arg_t *c = (car_arg_t*)arg;
-
-    // losujemy kierunek jazdy auta
-    dir_t kierunek = (rand() % 2) ? zAdoB : zBdoA;
-    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
-    if (kierunek == zAdoB) {
-        if((rand() % 2)){
-            KolejkaA++;
-            c->state = WAIT_A;
-        } else {
-            MiastoA++;
-            c->state = IN_A;
-        }
-    } else {
-        if((rand() % 2)){
-            KolejkaB++;
-            c->state = WAIT_B;
-        } else {
-            MiastoB++;
-            c->state = IN_B;
-        }
-    }
-    print_state();
-    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
-
-    bridge_steering();
-    return car_thread_driving(arg);
-}
-
 
 int main(int argc, char const *argv[])
 {
@@ -205,12 +218,6 @@ int main(int argc, char const *argv[])
         return 1;
     }
 
-    struct sigaction sa;
-    sa.sa_handler = on_sigint;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    sigaction(SIGINT, &sa, NULL);
-
     sem_init(&Most_sem, 0, 1);//most jest od razu wolny do przejazdu wiec ma 1 pozwolenie
     sem_init(&semA, 0, 0);
     sem_init(&semB, 0, 0);
@@ -225,34 +232,9 @@ int main(int argc, char const *argv[])
         pthread_create(&t[i], NULL, car_thread_init, &args[i]);
     }
 
-    while (!stop_flag) { // sprawdzamy czy sigint nie zostal otrzymany
-        usleep(100 * 1000);
-    }
+    for (int i = 0; i < N; i++) {
+    pthread_join(t[i], NULL);
+}
 
-    for (int i = 0; i < N; i++) { // po otrzymaniu sigint odblokowujemy wszystkie watki aut z kolejek by mogly sie zakonczyc
-        sem_post(&semA);
-        sem_post(&semB);
-    }
-
-    for (int i = 0; i < N; i++){
-    sem_post(&Most_sem);
-    }
-
-    for (int i = 0; i < N; i++) { // czekamy na zakonczenie wszystkich watkow aut
-        pthread_join(t[i], NULL);
-    }
-
-
-
-    // zwalniamy pamiec i niszczymy semafory i mutexy
-    free(t); 
-    free(args);
-
-    sem_destroy(&Most_sem);
-    sem_destroy(&semA);
-    sem_destroy(&semB);
-    pthread_mutex_destroy(&mtx);
-
-    printf("Koniec.\n");
     return 0;
 }
