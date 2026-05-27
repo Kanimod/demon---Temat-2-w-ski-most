@@ -145,6 +145,7 @@ static void* inCityA(void *arg) // watek auta podczas jazdy
         KolejkaA++;
         print_state();
     pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+    bridgesteering();
     c->state = stateKolejkaA; // auto chce teraz jechac z A do B
     return 0;
 }
@@ -159,26 +160,13 @@ static void* inCityB(void *arg) // watek auta podczas jazdy
         KolejkaB++;
         print_state();
     pthread_mutex_unlock(&mtx); // odblokowujemy mutex
+    bridgesteering();
     c->state = stateKolejkaB; // auto chce teraz jechac z B do A
     return 0;
 }
 
 static void* car_thread_init(void *arg){
     car_arg_t *c= (car_arg_t*)arg;
-
-    pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
-
-        if(rand() % 2) {
-            MiastoA++;
-            c->state = stateMiastoA;
-        } else {
-            MiastoB++;
-            c->state = stateMiastoB;
-        }   
-
-        print_state();
-    pthread_mutex_unlock(&mtx); // odblokowujemy mutex
-    bridgesteering();
 
     while (1){
         switch (c->state)
@@ -226,6 +214,18 @@ int main(int argc, char const *argv[])
     pthread_t *t = calloc((size_t)N, sizeof(pthread_t)); // tablica watkow aut
     car_arg_t *args = calloc((size_t)N, sizeof(car_arg_t)); //tablica argumentow dla watkow aut
 
+    for (int i = 0; i < N; i++) {
+        args[i].id = i + 1;
+        if (rand() % 2) {
+            MiastoA++;
+            args[i].state = stateMiastoA;
+        } else {
+            MiastoB++;
+            args[i].state = stateMiastoB;
+        }
+    }
+
+    print_state();
 
     for (int i = 0; i < N; i++) { // tworzenie watkow aut i przypisywanie im id
         args[i].id = i + 1;
