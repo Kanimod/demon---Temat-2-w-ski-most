@@ -7,8 +7,8 @@
 #include <time.h>
 
 static int N; // liczba aut (watkow)
-static int AutonaMoście = 0;
-typedef enum { pusty = 0, zAdoB = 1, zBdoA = 2 } dir_t; // typ kierunku na moscie dla static dir_t RuchMostu = DIR_NONE;
+
+typedef enum { pusty = 0, zAdoB = 1, zBdoA = 2 } dir_t; // typ kierunku na moscie
 
 static int MiastoA = 0, MiastoB = 0;
 static int KolejkaA  = 0, KolejkaB  =  0;
@@ -80,7 +80,7 @@ static void bridgesteering(){
     return;
 }
 
-static void* inQueueA (void *arg) // watek auta podczas jazdy
+static void inQueueA (void *arg) // watek auta podczas jazdy
 {
     car_arg_t *c = (car_arg_t*)arg;
     int id = c->id;
@@ -109,7 +109,7 @@ static void* inQueueA (void *arg) // watek auta podczas jazdy
     return 0;
 }
 
-static void* inQueueB (void *arg) // watek auta podczas jazdy
+static void inQueueB (void *arg) // watek auta podczas jazdy
 {
     car_arg_t *c = (car_arg_t*)arg;
     int id = c->id;
@@ -138,7 +138,7 @@ static void* inQueueB (void *arg) // watek auta podczas jazdy
     return 0;
 }
 
-static void* inCityA(void *arg) // watek auta podczas jazdy
+static void inCityA(void *arg) // watek auta podczas jazdy
 {
     car_arg_t *c = (car_arg_t*)arg;
 
@@ -153,7 +153,7 @@ static void* inCityA(void *arg) // watek auta podczas jazdy
     return 0;
 }
 
-static void* inCityB(void *arg) // watek auta podczas jazdy
+static void inCityB(void *arg) // watek auta podczas jazdy
 {
     car_arg_t *c = (car_arg_t*)arg;
 
@@ -230,15 +230,16 @@ int main(int argc, char const *argv[])
 
     print_state();
 
-    for (int i = 0; i < N; i++) { // tworzenie watkow aut i przypisywanie im id
-        args[i].id = i + 1;
-        pthread_create(&t[i], NULL, car_thread_init, &args[i]);
-    }
-
     // rejestrujemy handler
     struct sigaction sa = {0};
     sa.sa_handler = handle_sigint;
     sigaction(SIGINT, &sa, NULL);
+
+
+    for (int i = 0; i < N; i++) { // tworzenie watkow aut i przypisywanie im id
+        args[i].id = i + 1;
+        pthread_create(&t[i], NULL, car_thread_init, &args[i]);
+    }
 
     // główny wątek śpi i czeka na Ctrl+C
     while (!stop){
