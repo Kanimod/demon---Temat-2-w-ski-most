@@ -231,8 +231,7 @@ int main(int argc, char const *argv[])
     sa.sa_handler = handle_sigint;
     sigaction(SIGINT, &sa, NULL);
 
-
-    for (int i = 0; i < N; i++) { // tworzenie watkow aut
+    for (int i = 0; i < N; i++) { // tworzenie watkow aut i przypisywanie im id
         pthread_create(&t[i], NULL, car_thread_init, &args[i]);
     }
 
