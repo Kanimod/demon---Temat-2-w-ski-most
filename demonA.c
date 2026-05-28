@@ -106,7 +106,6 @@ static void inQueueA (void *arg) // watek auta podczas jazdy
     sem_post(&Most_sem); // odblokowujemy most
     bridgesteering();
     c->state = stateMiastoB; // auto jest teraz w miescie B
-    return 0;
 }
 
 static void inQueueB (void *arg) // watek auta podczas jazdy
@@ -135,7 +134,6 @@ static void inQueueB (void *arg) // watek auta podczas jazdy
     sem_post(&Most_sem); // odblokowujemy most
     bridgesteering();
     c->state = stateMiastoA; // auto jest teraz w miescie A
-    return 0;
 }
 
 static void inCityA(void *arg) // watek auta podczas jazdy
@@ -150,7 +148,6 @@ static void inCityA(void *arg) // watek auta podczas jazdy
     pthread_mutex_unlock(&mtx); // odblokowujemy mutex
     bridgesteering();
     c->state = stateKolejkaA; // auto chce teraz jechac z A do B
-    return 0;
 }
 
 static void inCityB(void *arg) // watek auta podczas jazdy
@@ -165,7 +162,6 @@ static void inCityB(void *arg) // watek auta podczas jazdy
     pthread_mutex_unlock(&mtx); // odblokowujemy mutex
     bridgesteering();
     c->state = stateKolejkaB; // auto chce teraz jechac z B do A
-    return 0;
 }
 
 static void* car_thread_init(void *arg){
@@ -237,7 +233,6 @@ int main(int argc, char const *argv[])
 
 
     for (int i = 0; i < N; i++) { // tworzenie watkow aut i przypisywanie im id
-        args[i].id = i + 1;
         pthread_create(&t[i], NULL, car_thread_init, &args[i]);
     }
 
