@@ -23,6 +23,14 @@ static sem_t Most_sem; // pilnuje by na moscie bylo max 1 auto
 static sem_t semA; //kolejka samochodw co chca jechac z A do B
 static sem_t semB; //kolejka samochodw co chca jechac z B do A
 
+// globalny znacznik stopu
+static volatile sig_atomic_t stop = 0;
+
+static void handle_sigint(int sig) {
+    (void)sig;
+    stop = 1;
+}
+
 static int rnd_us(int min_us, int max_us) {
     return min_us + rand() % (max_us - min_us + 1);
 }
@@ -39,11 +47,6 @@ void print_state(void)
     else {
         printf("A-%d %d >>> [ --- ] <<< %d %d-B\n", MiastoA, KolejkaA, KolejkaB, MiastoB);
     }
-    int on_bridge = (NaMościeAuto != -1) ? 1 : 0;
-int suma = MiastoA + MiastoB + KolejkaA + KolejkaB + on_bridge;
-if (suma != N) {
-    fprintf(stderr, "BLAD: suma=%d, N=%d\n", suma, N);
-}
     fflush(stdout);
 }
 typedef enum { stateKolejkaA = 0, stateKolejkaB = 1, stateMiastoA = 2, stateMiastoB = 3 } state_t;
@@ -63,7 +66,7 @@ static void bridgesteering(){
                 RuchMostu = zBdoA;
                 sem_post(&semB); // odblokowujemy auto z kolejki B
             }
-            else if(KolejkaA > 0 && KolejkaB > 0) { // jesli sa auta w obu kolejkach to przepuszczamy auto z kolejki ktora ma wiecej aut
+            else if(KolejkaA > 0 && KolejkaB > 0) { // jesli sa auta w obu kolejkach to przepuszczamy auto z tej kolejki ktora ma teraz priorytet
                 if(ZmiennikKierunku == zAdoB) {
                     RuchMostu = zAdoB;
                     sem_post(&semA); // odblokowujemy auto z kolejki A
@@ -94,11 +97,11 @@ static void* inQueueA (void *arg) // watek auta podczas jazdy
     usleep(rnd_us(100*1000, 300*1000)); // auto jest na moscie przez losowy czas od 100ms do 300ms
 
     pthread_mutex_lock(&mtx); // blokujemy mutex by bezpiecznie zmienic stan symulacji
-        NaMościeAuto = -1;
+        NaMościeAuto = -1; // auto zjechalo z mostu
         RuchMostu = pusty; // most jest teraz wolny
         MiastoB++;
         print_state();
-        ZmiennikKierunku = zBdoA; // zmieniamy kierunek dla kolejnego auta jesli sa auta w obu kolejkach
+        ZmiennikKierunku = zBdoA; // zmieniamy kierunek ruchu na moscie dla kolejnego auta jesli sa auta w obu kolejkach
     pthread_mutex_unlock(&mtx); // odblokowujemy mutex
     sem_post(&Most_sem); // odblokowujemy most
     bridgesteering();
@@ -127,7 +130,7 @@ static void* inQueueB (void *arg) // watek auta podczas jazdy
         RuchMostu = pusty; // most jest teraz wolny
         MiastoA++;
         print_state();
-        ZmiennikKierunku = zAdoB; // zmieniamy kierunek dla kolejnego auta jesli sa auta w obu kolejkach
+        ZmiennikKierunku = zAdoB; // zmieniamy kierunek ruchu na moscie dla kolejnego auta jesli sa auta w obu kolejkach
     pthread_mutex_unlock(&mtx); // odblokowujemy mutex
     sem_post(&Most_sem); // odblokowujemy most
     bridgesteering();
@@ -232,9 +235,17 @@ int main(int argc, char const *argv[])
         pthread_create(&t[i], NULL, car_thread_init, &args[i]);
     }
 
-    for (int i = 0; i < N; i++) {
-    pthread_join(t[i], NULL);
-}
+    // rejestrujemy handler
+    struct sigaction sa = {0};
+    sa.sa_handler = handle_sigint;
+    sigaction(SIGINT, &sa, NULL);
+
+    // główny wątek śpi i czeka na Ctrl+C
+    while (!stop){
+        pause();   // usypia do czasu otrzymania sygnału
+    }
+
+    printf("\nKoniec .\n");
 
     return 0;
 }
