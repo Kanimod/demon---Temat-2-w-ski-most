@@ -7,7 +7,7 @@
 #include <time.h>
 
 static int N; // liczba aut (watkow)
-typedef enum { pusty = 0, zAdoB = 1, zBdoA = 2 } dir_t; // typ kierunku na moscie dla static dir_t RuchMostu = DIR_NONE;
+typedef enum { pusty = 0, zAdoB = 1, zBdoA = 2 } dir_t; // kierunek ruchu na moście
 
 static int MiastoA = 0, MiastoB = 0; // liczba aut znajdujących się w miastach
 static int KolejkaA  = 0, KolejkaB  =  0; // liczba aut czekających przed mostem
