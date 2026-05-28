@@ -232,7 +232,7 @@ int main(int argc, char const *argv[])
     sigaction(SIGINT, &sa, NULL);
 
 
-    for (int i = 0; i < N; i++) { // tworzenie watkow aut i przypisywanie im id
+    for (int i = 0; i < N; i++) { // tworzenie watkow aut
         pthread_create(&t[i], NULL, car_thread_init, &args[i]);
     }
 
